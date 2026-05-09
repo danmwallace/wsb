@@ -39,29 +39,5 @@ services:
       postgres:
         condition: service_healthy
 
-  # Optional: run n8n in this stack too. Opt in with `docker compose --profile n8n up -d`.
-  # Skip if you already run n8n on the host or in a separate stack — the existing
-  # `Postgres - wsb` n8n credential just needs to point at the right host.
-  n8n:
-    profiles: ["n8n"]
-    image: n8nio/n8n:latest
-    container_name: wsb-n8n
-    restart: unless-stopped
-    ports:
-      - "${N8N_PORT:-5678}:5678"
-    environment:
-      N8N_HOST: ${N8N_HOST:-localhost}
-      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
-      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
-      GENERIC_TIMEZONE: ${TZ:-America/New_York}
-      TZ: ${TZ:-America/New_York}
-      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env before starting n8n}
-    volumes:
-      - wsb-n8n-data:/home/node/.n8n
-    depends_on:
-      postgres:
-        condition: service_healthy
-
 volumes:
   wsb-pgdata:
-  wsb-n8n-data:
