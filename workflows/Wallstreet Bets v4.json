@@ -1,0 +1,645 @@
+{
+  "name": "Wallstreet Bets v4",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-2656, 512],
+      "id": "eda3cbe1-5b2b-41a4-9036-783f42263048",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8,12,20 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-2656, 752],
+      "id": "d788db1a-ce95-433f-b4e7-82bedb2e606a",
+      "name": "Daily Schedule (8/12/20 ET)"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "subreddit": "wallstreetbets",
+        "limit": 25,
+        "filters": {
+          "category": "hot"
+        }
+      },
+      "type": "n8n-nodes-base.reddit",
+      "typeVersion": 1,
+      "position": [-2416, 640],
+      "id": "283290af-bfa1-43e2-af61-5542cf03b91c",
+      "name": "Get WSB Posts",
+      "credentials": {
+        "redditOAuth2Api": {
+          "id": "33cQ5QztjkS2hIrE",
+          "name": "Reddit account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Cross-run dedupe by Reddit PostID, with 14-day TTL.\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.seenPostIds) staticData.seenPostIds = {};\n\nconst now = Date.now();\nconst TTL_MS = 14 * 24 * 60 * 60 * 1000;\n\nfor (const id of Object.keys(staticData.seenPostIds)) {\n  if (now - staticData.seenPostIds[id] > TTL_MS) {\n    delete staticData.seenPostIds[id];\n  }\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  const postId = j.id || j.name?.replace(/^t3_/, '');\n  if (!postId) continue;\n  if (staticData.seenPostIds[postId]) continue;\n  staticData.seenPostIds[postId] = now;\n  const link = j.permalink\n    ? `https://www.reddit.com${j.permalink}`\n    : (j.url || '');\n  out.push({ json: { ...j, postId, link } });\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1936, 640],
+      "id": "d69328a1-139c-4e79-b072-c9a3e799ec28",
+      "name": "Dedupe by PostID"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Wall Street Bets post:\nTitle: {{ $json.title }}\nLink: {{ $json.link }}\nPostId: {{ $json.postId }}\nBody: {{ ($json.selftext || '').toString().slice(0, 1500) }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Extract stock-relevant info from a Wall Street Bets post.\n\nSteps:\n1. Call the fetch_reddit_comments tool with the provided PostId to read the top comments.\n2. Identify the primary stock ticker and company being discussed in the post + comments. If no specific ticker is the focus, return \"N/A\" for both Ticker and Company.\n3. Write a 2-3 sentence Summary covering the post's thesis and the dominant tone of the comments.\n\nReturn JSON with fields: Ticker, Company, Summary, PostId, Link. Do not include any other fields. Only output JSON."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [-1440, 384],
+      "id": "2efb307c-52f9-46a0-b80d-35417c6ef415",
+      "name": "Organize Data. Go through threads.",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-4-5-20251001",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [-1536, 656],
+      "id": "8c801a86-a6cb-4967-8109-362f44c0fe20",
+      "name": "Claude Haiku (agent)",
+      "credentials": {
+        "anthropicApi": {
+          "id": "Tn04tSTifMdSaHfz",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Fetch the top comments for a specific Reddit post by its post ID. Use this to read what users are saying about a stock before forming a summary.",
+        "url": "=https://www.reddit.com/comments/{{ $fromAI('postId', 'The Reddit post ID, e.g. 1mvphk8', 'string') }}.json?limit=25&sort=top",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-wsb-bot/1.0 (by /u/anonymous)"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [-1344, 768],
+      "id": "884696a0-c5c1-4b61-8722-25359f2ced72",
+      "name": "fetch_reddit_comments"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"Ticker\": \"AAPL\",\n  \"Company\": \"Apple Inc.\",\n  \"Summary\": \"Post argues Apple's services growth offsets weak iPhone units. Commenters are skeptical, citing China demand softness, but a few highlight buyback support.\",\n  \"PostId\": \"1mvphk8\",\n  \"Link\": \"https://www.reddit.com/r/wallstreetbets/comments/1mvphk8/example/\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [-1136, 640],
+      "id": "c3a9f453-6332-43b8-ac1f-8f35bebced1f",
+      "name": "Parse data into JSON"
+    },
+    {
+      "parameters": {
+        "inputText": "={{ $json.output.Ticker }} - {{ $json.output.Company }}\n{{ $json.output.Summary }}",
+        "options": {
+          "systemPromptTemplate": "You are a highly intelligent and accurate sentiment analyzer. Analyze the sentiment of the provided text. Categorize it into one of the following: {categories}. Use the provided formatting instructions. Only output the JSON.",
+          "includeDetailedResults": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.sentimentAnalysis",
+      "typeVersion": 1.1,
+      "position": [-800, 336],
+      "id": "b0afa021-d219-4823-857f-575bcbd8526a",
+      "name": "Analyze user sentiment regarding Stocks"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-4-5-20251001",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [-800, 624],
+      "id": "fe5d9ff8-afa2-4370-b139-6503ec311937",
+      "name": "Claude Haiku (sentiment)",
+      "credentials": {
+        "anthropicApi": {
+          "id": "Tn04tSTifMdSaHfz",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "p1",
+              "leftValue": "={{ $json.output.Ticker }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "p2",
+              "leftValue": "={{ $json.output.Company }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "p3",
+              "leftValue": "={{ $json.output.Ticker }}",
+              "rightValue": "N/A",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "p4",
+              "leftValue": "={{ $json.output.Company }}",
+              "rightValue": "N/A",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [-368, 208],
+      "id": "5af545ec-e0ef-4048-8733-2b36839a9209",
+      "name": "Filter Positive"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "n1",
+              "leftValue": "={{ $json.output.Ticker }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "n2",
+              "leftValue": "={{ $json.output.Company }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "n3",
+              "leftValue": "={{ $json.output.Ticker }}",
+              "rightValue": "N/A",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "n4",
+              "leftValue": "={{ $json.output.Company }}",
+              "rightValue": "N/A",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [-368, 400],
+      "id": "5f53d569-3ae3-4aba-918f-0aca62b88256",
+      "name": "Filter Neutral"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "g1",
+              "leftValue": "={{ $json.output.Ticker }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "g2",
+              "leftValue": "={{ $json.output.Company }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "g3",
+              "leftValue": "={{ $json.output.Ticker }}",
+              "rightValue": "N/A",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "g4",
+              "leftValue": "={{ $json.output.Company }}",
+              "rightValue": "N/A",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [-368, 576],
+      "id": "65bf29c7-2161-4e3d-8c79-a53a5fb62438",
+      "name": "Filter Negative"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [-32, 400],
+      "id": "1a0d2c61-4d9c-4b0a-9c26-7c4e6c5f7a01",
+      "name": "Merge sentiment branches"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "posts"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "post_id": "={{ $json.output.PostId }}",
+            "ticker": "={{ $json.output.Ticker }}",
+            "company": "={{ $json.output.Company }}",
+            "summary": "={{ $json.output.Summary }}",
+            "sentiment": "={{ $json.sentimentAnalysis.category }}",
+            "link": "={{ $json.output.Link }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "post_id", "displayName": "post_id", "required": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "ticker", "displayName": "ticker", "required": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "company", "displayName": "company", "required": false, "type": "string" },
+            { "id": "summary", "displayName": "summary", "required": false, "type": "string" },
+            { "id": "sentiment", "displayName": "sentiment", "required": true, "type": "string" },
+            { "id": "link", "displayName": "link", "required": false, "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [192, 400],
+      "id": "f1a2b3c4-5d6e-7f80-9112-2a3b4c5d6e7f",
+      "name": "Save Post",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres - wsb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rp",
+                    "leftValue": "={{ $json.sentimentAnalysis.category }}",
+                    "rightValue": "Positive",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Positive"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rn",
+                    "leftValue": "={{ $json.sentimentAnalysis.category }}",
+                    "rightValue": "Neutral",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Neutral"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rg",
+                    "leftValue": "={{ $json.sentimentAnalysis.category }}",
+                    "rightValue": "Negative",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Negative"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [624, 400],
+      "id": "b3c4d5e6-7f80-9112-2334-4c5d6e7f8091",
+      "name": "Route by sentiment"
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "options": {},
+        "embeds": {
+          "values": [
+            {
+              "description": "={{ $json.output.Summary }}",
+              "color": "#2ECC71",
+              "title": "={{ $json.output.Company }} — {{ $json.output.Ticker }} 🟢",
+              "url": "={{ $json.output.Link }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [880, 192],
+      "id": "56a89e2b-4e54-45fe-be2b-66d9dd321cb3",
+      "name": "Send Upward Trending Stocks to Discord",
+      "webhookId": "05198f64-c74d-414e-b370-0d3616cab0ce",
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "EZmw8OBhPFYy3HjE",
+          "name": "Discord Webhook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "options": {},
+        "embeds": {
+          "values": [
+            {
+              "description": "={{ $json.output.Summary }}",
+              "color": "#95A5A6",
+              "title": "={{ $json.output.Company }} — {{ $json.output.Ticker }} ⚪",
+              "url": "={{ $json.output.Link }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [880, 400],
+      "id": "b3dca306-1bbf-4c8f-aa09-21b91f2aa2ec",
+      "name": "Send Neutral Stocks to Discord",
+      "webhookId": "05198f64-c74d-414e-b370-0d3616cab0ce",
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "EZmw8OBhPFYy3HjE",
+          "name": "Discord Webhook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "options": {},
+        "embeds": {
+          "values": [
+            {
+              "description": "={{ $json.output.Summary }}",
+              "color": "#E74C3C",
+              "title": "={{ $json.output.Company }} — {{ $json.output.Ticker }} 🔴",
+              "url": "={{ $json.output.Link }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [880, 608],
+      "id": "41fb5aad-5338-42b9-845a-2a26d0a242e4",
+      "name": "Send Downward Trending Stocks to Discord",
+      "webhookId": "05198f64-c74d-414e-b370-0d3616cab0ce",
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "EZmw8OBhPFYy3HjE",
+          "name": "Discord Webhook account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [[{ "node": "Get WSB Posts", "type": "main", "index": 0 }]]
+    },
+    "Daily Schedule (8/12/20 ET)": {
+      "main": [[{ "node": "Get WSB Posts", "type": "main", "index": 0 }]]
+    },
+    "Get WSB Posts": {
+      "main": [[{ "node": "Dedupe by PostID", "type": "main", "index": 0 }]]
+    },
+    "Dedupe by PostID": {
+      "main": [[{ "node": "Organize Data. Go through threads.", "type": "main", "index": 0 }]]
+    },
+    "Organize Data. Go through threads.": {
+      "main": [[{ "node": "Analyze user sentiment regarding Stocks", "type": "main", "index": 0 }]]
+    },
+    "Claude Haiku (agent)": {
+      "ai_languageModel": [[{ "node": "Organize Data. Go through threads.", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "fetch_reddit_comments": {
+      "ai_tool": [[{ "node": "Organize Data. Go through threads.", "type": "ai_tool", "index": 0 }]]
+    },
+    "Parse data into JSON": {
+      "ai_outputParser": [[{ "node": "Organize Data. Go through threads.", "type": "ai_outputParser", "index": 0 }]]
+    },
+    "Claude Haiku (sentiment)": {
+      "ai_languageModel": [[{ "node": "Analyze user sentiment regarding Stocks", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Analyze user sentiment regarding Stocks": {
+      "main": [
+        [{ "node": "Filter Positive", "type": "main", "index": 0 }],
+        [{ "node": "Filter Neutral", "type": "main", "index": 0 }],
+        [{ "node": "Filter Negative", "type": "main", "index": 0 }]
+      ]
+    },
+    "Filter Positive": {
+      "main": [[{ "node": "Merge sentiment branches", "type": "main", "index": 0 }]]
+    },
+    "Filter Neutral": {
+      "main": [[{ "node": "Merge sentiment branches", "type": "main", "index": 1 }]]
+    },
+    "Filter Negative": {
+      "main": [[{ "node": "Merge sentiment branches", "type": "main", "index": 2 }]]
+    },
+    "Merge sentiment branches": {
+      "main": [[{ "node": "Save Post", "type": "main", "index": 0 }]]
+    },
+    "Save Post": {
+      "main": [[{ "node": "Route by sentiment", "type": "main", "index": 0 }]]
+    },
+    "Route by sentiment": {
+      "main": [
+        [{ "node": "Send Upward Trending Stocks to Discord", "type": "main", "index": 0 }],
+        [{ "node": "Send Neutral Stocks to Discord", "type": "main", "index": 0 }],
+        [{ "node": "Send Downward Trending Stocks to Discord", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "v4-2026-05-07",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c9cf4aa26b9cdd1dcc89fd2f52a7535423a3fd3e414bdcb73a07f091d9c3ff59"
+  },
+  "tags": []
+}

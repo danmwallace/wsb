@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: wsb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wsb}
+      POSTGRES_USER: ${POSTGRES_USER:-wsb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wsb}
+    ports:
+      # Bound to localhost so host-side n8n can reach 127.0.0.1:5432.
+      # On the server, restrict the bind address as needed (or remove the
+      # publish entirely if everything that needs it lives in this compose).
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - wsb-pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wsb} -d ${POSTGRES_DB:-wsb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    image: wsb-web:latest
+    container_name: wsb-web
+    restart: unless-stopped
+    environment:
+      # Inside the compose network the DB host is the service name `postgres`,
+      # not localhost. Override this in .env for any external DB.
+      DATABASE_URL: ${WEB_DATABASE_URL:-postgres://${POSTGRES_USER:-wsb}:${POSTGRES_PASSWORD:-wsb}@postgres:5432/${POSTGRES_DB:-wsb}}
+      NODE_ENV: production
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Optional: run n8n in this stack too. Opt in with `docker compose --profile n8n up -d`.
+  # Skip if you already run n8n on the host or in a separate stack — the existing
+  # `Postgres - wsb` n8n credential just needs to point at the right host.
+  n8n:
+    profiles: ["n8n"]
+    image: n8nio/n8n:latest
+    container_name: wsb-n8n
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+      GENERIC_TIMEZONE: ${TZ:-America/New_York}
+      TZ: ${TZ:-America/New_York}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env before starting n8n}
+    volumes:
+      - wsb-n8n-data:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  wsb-pgdata:
+  wsb-n8n-data:

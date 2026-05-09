@@ -1,0 +1,370 @@
+{
+  "name": "Research and Rate v1",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1600, 0],
+      "id": "11111111-1111-4111-9111-111111111111",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 16 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1600, 240],
+      "id": "22222222-2222-4222-9222-222222222222",
+      "name": "Daily 16:30 ET (weekdays)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  t.ticker,\n  t.company,\n  COUNT(p.*) FILTER (WHERE p.sentiment = 'Positive') AS pos_count,\n  COUNT(p.*) FILTER (WHERE p.sentiment = 'Neutral')  AS neu_count,\n  COUNT(p.*) FILTER (WHERE p.sentiment = 'Negative') AS neg_count\nFROM tickers t\nLEFT JOIN posts p\n  ON p.ticker = t.ticker\n AND p.observed_at > now() - interval '14 days'\nWHERE t.last_seen_at > now() - interval '14 days'\nGROUP BY t.ticker, t.company\nORDER BY t.last_seen_at DESC\nLIMIT 50;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-1360, 120],
+      "id": "33333333-3333-4333-9333-333333333333",
+      "name": "Pick active tickers",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres - wsb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-1120, 120],
+      "id": "44444444-4444-4444-9444-444444444444",
+      "name": "Per-ticker loop"
+    },
+    {
+      "parameters": {
+        "url": "=https://finnhub.io/api/v1/quote?symbol={{ encodeURIComponent($json.ticker) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-880, -80],
+      "id": "55555555-5555-4555-9555-555555555555",
+      "name": "Finnhub Quote",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_FINNHUB_CREDENTIAL_ID",
+          "name": "Finnhub - X-Finnhub-Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://finnhub.io/api/v1/company-news?symbol={{ encodeURIComponent($json.ticker) }}&from={{ $now.minus({days:7}).toFormat('yyyy-LL-dd') }}&to={{ $now.toFormat('yyyy-LL-dd') }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-880, 120],
+      "id": "66666666-6666-4666-9666-666666666666",
+      "name": "Finnhub Company News",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_FINNHUB_CREDENTIAL_ID",
+          "name": "Finnhub - X-Finnhub-Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://finnhub.io/api/v1/stock/metric?symbol={{ encodeURIComponent($json.ticker) }}&metric=all",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-880, 320],
+      "id": "77777777-7777-4777-9777-777777777777",
+      "name": "Finnhub Metrics",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_FINNHUB_CREDENTIAL_ID",
+          "name": "Finnhub - X-Finnhub-Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine the three Finnhub responses + the original ticker row into one item.\n// `Per-ticker loop` exposes the source row at $('Per-ticker loop').item.json.\n// The three HTTP nodes wrote their responses into successive item bodies, so\n// we look them up by reference.\nconst src = $('Per-ticker loop').item.json;\nconst quote = $('Finnhub Quote').item.json || {};\nconst news = $('Finnhub Company News').item.json || [];\nconst metricBody = $('Finnhub Metrics').item.json || {};\nconst metric = metricBody.metric || {};\n\n// Finnhub /quote shape: c=current, dp=percent change, h=high, l=low, o=open, pc=previous close\nconst price = quote.c ?? null;\nconst change_pct_1d = quote.dp ?? null;\n\n// 5-day and YTD changes come from the metric endpoint when available.\nconst change_pct_5d = metric['5DayPriceReturnDaily'] ?? null;\nconst change_pct_ytd = metric['yearToDatePriceReturnDaily'] ?? null;\nconst market_cap = metric.marketCapitalization ?? null; // in millions for US tickers\nconst pe_ratio = metric.peNormalizedAnnual ?? metric.peExclExtraTTM ?? null;\n\n// Cap headlines at 10 to keep the prompt small.\nconst headlines = (Array.isArray(news) ? news : [])\n  .slice(0, 10)\n  .map(n => ({\n    headline: n.headline,\n    url: n.url,\n    source: n.source,\n    datetime: n.datetime\n  }));\n\nreturn [{\n  json: {\n    ticker: src.ticker,\n    company: src.company,\n    pos_count: Number(src.pos_count) || 0,\n    neu_count: Number(src.neu_count) || 0,\n    neg_count: Number(src.neg_count) || 0,\n    price,\n    change_pct_1d,\n    change_pct_5d,\n    change_pct_ytd,\n    market_cap_m: market_cap,\n    pe_ratio,\n    news: headlines,\n    fundamentals: metric\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-640, 120],
+      "id": "88888888-8888-4888-9888-888888888888",
+      "name": "Build research payload"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "research_snapshots"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["ticker", "as_of_date"],
+          "value": {
+            "ticker": "={{ $json.ticker }}",
+            "as_of_date": "={{ $now.toFormat('yyyy-LL-dd') }}",
+            "price": "={{ $json.price }}",
+            "change_pct_1d": "={{ $json.change_pct_1d }}",
+            "change_pct_5d": "={{ $json.change_pct_5d }}",
+            "change_pct_ytd": "={{ $json.change_pct_ytd }}",
+            "market_cap": "={{ $json.market_cap_m === null ? null : $json.market_cap_m * 1000000 }}",
+            "pe_ratio": "={{ $json.pe_ratio }}",
+            "news": "={{ $json.news }}",
+            "fundamentals": "={{ $json.fundamentals }}"
+          },
+          "schema": [
+            { "id": "ticker", "displayName": "ticker", "required": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "as_of_date", "displayName": "as_of_date", "required": true, "type": "dateTime", "canBeUsedToMatch": true },
+            { "id": "price", "displayName": "price", "required": false, "type": "number" },
+            { "id": "change_pct_1d", "displayName": "change_pct_1d", "required": false, "type": "number" },
+            { "id": "change_pct_5d", "displayName": "change_pct_5d", "required": false, "type": "number" },
+            { "id": "change_pct_ytd", "displayName": "change_pct_ytd", "required": false, "type": "number" },
+            { "id": "market_cap", "displayName": "market_cap", "required": false, "type": "number" },
+            { "id": "pe_ratio", "displayName": "pe_ratio", "required": false, "type": "number" },
+            { "id": "news", "displayName": "news", "required": false, "type": "object" },
+            { "id": "fundamentals", "displayName": "fundamentals", "required": false, "type": "object" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-400, 120],
+      "id": "99999999-9999-4999-9999-999999999999",
+      "name": "Save snapshot",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres - wsb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Re-fetch the merged payload from the upstream Code node so the agent's\n// prompt has structured access to all signals.\nconst src = $('Build research payload').item.json;\n\nconst fmtPct = v => v === null || v === undefined ? 'n/a' : `${Number(v).toFixed(2)}%`;\nconst fmtUsd = v => v === null || v === undefined ? 'n/a' : `$${Number(v).toLocaleString()}`;\nconst fmtMcap = v => v === null || v === undefined ? 'n/a' : `$${(Number(v) / 1e9).toFixed(2)}B`;\n\nconst headlines = (src.news || []).map((h, i) =>\n  `${i + 1}. [${h.source || 'unknown'}] ${h.headline || ''}`\n).join('\\n') || '(none in last 7 days)';\n\nconst text = [\n  `Ticker: ${src.ticker}`,\n  `Company: ${src.company || ''}`,\n  '',\n  'WSB sentiment, last 14 days:',\n  `- Positive: ${src.pos_count}`,\n  `- Neutral:  ${src.neu_count}`,\n  `- Negative: ${src.neg_count}`,\n  '',\n  'Market data (today):',\n  `- Price:        ${fmtUsd(src.price)}`,\n  `- 1d change:    ${fmtPct(src.change_pct_1d)}`,\n  `- 5d change:    ${fmtPct(src.change_pct_5d)}`,\n  `- YTD change:   ${fmtPct(src.change_pct_ytd)}`,\n  `- Market cap:   ${fmtMcap(src.market_cap_m === null ? null : src.market_cap_m * 1e6)}`,\n  `- P/E (norm.):  ${src.pe_ratio ?? 'n/a'}`,\n  '',\n  'Recent headlines:',\n  headlines\n].join('\\n');\n\nreturn [{ json: { ...src, prompt_text: text } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 120],
+      "id": "aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa",
+      "name": "Build agent prompt"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt_text }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You issue a daily Buy / Sell / Hold rating for a single stock based on aggregated signals. You will receive: WSB sentiment counts (last 14 days), today's price + price changes, market cap, P/E, and recent news headlines.\n\nRating definitions:\n- Buy: signals are net positive AND price action / fundamentals do not strongly contradict.\n- Sell: signals are net negative AND there is a clear bearish driver (sentiment + price + news aligned).\n- Hold: mixed signals, low data, or anything you cannot defend with a clear thesis.\n\nConfidence calibration (0-100):\n- 0-30: weak / data is sparse / contradictory.\n- 31-60: directional but with notable counter-evidence.\n- 61-85: clear thesis, multiple signals aligned.\n- 86-100: very strong, rare; reserve for high-conviction multi-signal alignment.\n\nWeighting guidance: WSB sentiment is one input, not the dominant one. Weight today's price action and news on par with sentiment; weight fundamentals less unless they reveal a structural concern (P/E extremes, missing data).\n\nThis is not investment advice. Return JSON only, no prose, no markdown."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [80, 120],
+      "id": "bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb",
+      "name": "Rate the stock",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-4-5-20251001",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [-32, 320],
+      "id": "cccccccc-cccc-4ccc-9ccc-cccccccccccc",
+      "name": "Claude Haiku (rater)",
+      "credentials": {
+        "anthropicApi": {
+          "id": "Tn04tSTifMdSaHfz",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"rating\": \"Buy\",\n  \"confidence\": 75,\n  \"rationale\": \"WSB sentiment skews positive (12 pos vs 2 neg). Price up 1.2% today, up 4% over 5d. Recent news on services growth supports the bull case; no clear contradicting headline.\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [192, 320],
+      "id": "dddddddd-dddd-4ddd-9ddd-dddddddddddd",
+      "name": "Parse rating JSON"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ratings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["ticker", "as_of_date"],
+          "value": {
+            "ticker": "={{ $('Build agent prompt').item.json.ticker }}",
+            "as_of_date": "={{ $now.toFormat('yyyy-LL-dd') }}",
+            "rating": "={{ $json.output.rating }}",
+            "confidence": "={{ Math.round(Number($json.output.confidence)) }}",
+            "rationale": "={{ String($json.output.rationale || '').slice(0, 4000) }}"
+          },
+          "schema": [
+            { "id": "ticker", "displayName": "ticker", "required": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "as_of_date", "displayName": "as_of_date", "required": true, "type": "dateTime", "canBeUsedToMatch": true },
+            { "id": "rating", "displayName": "rating", "required": true, "type": "string" },
+            { "id": "confidence", "displayName": "confidence", "required": true, "type": "number" },
+            { "id": "rationale", "displayName": "rationale", "required": true, "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [400, 120],
+      "id": "eeeeeeee-eeee-4eee-9eee-eeeeeeeeeeee",
+      "name": "Save rating",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres - wsb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [624, 120],
+      "id": "ffffffff-ffff-4fff-9fff-ffffffffffff",
+      "name": "Throttle (3s)",
+      "webhookId": "research-rate-throttle"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [[{ "node": "Pick active tickers", "type": "main", "index": 0 }]]
+    },
+    "Daily 16:30 ET (weekdays)": {
+      "main": [[{ "node": "Pick active tickers", "type": "main", "index": 0 }]]
+    },
+    "Pick active tickers": {
+      "main": [[{ "node": "Per-ticker loop", "type": "main", "index": 0 }]]
+    },
+    "Per-ticker loop": {
+      "main": [
+        [],
+        [{ "node": "Finnhub Quote", "type": "main", "index": 0 }]
+      ]
+    },
+    "Finnhub Quote": {
+      "main": [[{ "node": "Finnhub Company News", "type": "main", "index": 0 }]]
+    },
+    "Finnhub Company News": {
+      "main": [[{ "node": "Finnhub Metrics", "type": "main", "index": 0 }]]
+    },
+    "Finnhub Metrics": {
+      "main": [[{ "node": "Build research payload", "type": "main", "index": 0 }]]
+    },
+    "Build research payload": {
+      "main": [[{ "node": "Save snapshot", "type": "main", "index": 0 }]]
+    },
+    "Save snapshot": {
+      "main": [[{ "node": "Build agent prompt", "type": "main", "index": 0 }]]
+    },
+    "Build agent prompt": {
+      "main": [[{ "node": "Rate the stock", "type": "main", "index": 0 }]]
+    },
+    "Claude Haiku (rater)": {
+      "ai_languageModel": [[{ "node": "Rate the stock", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Parse rating JSON": {
+      "ai_outputParser": [[{ "node": "Rate the stock", "type": "ai_outputParser", "index": 0 }]]
+    },
+    "Rate the stock": {
+      "main": [[{ "node": "Save rating", "type": "main", "index": 0 }]]
+    },
+    "Save rating": {
+      "main": [[{ "node": "Throttle (3s)", "type": "main", "index": 0 }]]
+    },
+    "Throttle (3s)": {
+      "main": [[{ "node": "Per-ticker loop", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "America/New_York",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "research-rate-v1-2026-05-07",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c9cf4aa26b9cdd1dcc89fd2f52a7535423a3fd3e414bdcb73a07f091d9c3ff59"
+  },
+  "tags": []
+}
