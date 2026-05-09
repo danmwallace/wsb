@@ -1,0 +1,13 @@
+# Local env files (use .env.example / web/.env.local.example as templates)
+.env
+.env.local
+.env*.local
+web/.env
+web/.env.local
+web/.env*.local
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
