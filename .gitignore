@@ -11,3 +11,16 @@ web/.env*.local
 *.swp
 .idea/
 .vscode/
+
+# Build artifacts
+web/tsconfig.tsbuildinfo
+
+# n8n source-of-truth lives in the running instance for these flows;
+# re-export when there's a meaningful change worth committing.
+workflows/Research and Rate v1.json
+workflows/Wallstreet Bets v4.json
+
+# Claude Code: track shared project config (.claude/agents/, .claude/settings.json
+# if/when present), ignore personal overrides and runtime cache.
+.claude/settings.local.json
+.claude/agent-memory/
