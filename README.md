@@ -10,6 +10,7 @@ n8n cron  ────┘
 
 - **Wallstreet Bets v4** (n8n): replaces SharePoint with a single `posts` insert + `tickers` upsert per analyzed post. Discord alerts unchanged.
 - **Research and Rate v1** (n8n): runs at 16:30 ET on weekdays. For each ticker active in the last 14 days, pulls Finnhub quote / company-news / metrics, then asks Claude to issue Buy/Sell/Hold with rationale. Writes to `research_snapshots` and `ratings`.
+- **Cleanup and Archive v1** (n8n): runs Sundays at 03:00 ET. Moves any `research_snapshots` / `ratings` row older than 90 days into the matching `*_archive` table, then deletes from the hot table. Atomic per run; safe to re-run.
 - **web/**: Next.js dashboard. Server components query Postgres directly via `pg`.
 
 ## One-time setup
@@ -50,8 +51,15 @@ In n8n: **Workflows → Import from File** for each:
 
 - `workflows/Wallstreet Bets v4.json`
 - `workflows/Research and Rate v1.json`
+- `workflows/Cleanup and Archive v1.json`
 
-Both files reference credentials by id `REPLACE_WITH_POSTGRES_CREDENTIAL_ID` and `REPLACE_WITH_FINNHUB_CREDENTIAL_ID`. Open each Postgres / HTTP Request node and re-select the credential — n8n will pin the actual id on save.
+These files reference credentials by id `REPLACE_WITH_POSTGRES_CREDENTIAL_ID` and `REPLACE_WITH_FINNHUB_CREDENTIAL_ID`. Open each Postgres / HTTP Request node and re-select the credential — n8n will pin the actual id on save.
+
+If you're importing into an existing deployment (database already running, not a fresh volume), apply the archive-table migration first or the cleanup workflow will fail:
+
+```bash
+docker exec -i wsb-postgres psql -U wsb -d wsb < db/migrations/001-create-archive-tables.sql
+```
 
 Test with the manual trigger before activating the schedule triggers. Once both flows look healthy, **deactivate the old `Wallstreet Bets v3`** so you don't double-write.
 
@@ -80,11 +88,12 @@ Open <http://localhost:3000>. With an empty database you'll see the empty state;
 ## Verification checklist
 
 - [ ] `docker compose up -d postgres` is healthy (`docker compose ps` shows `healthy`).
-- [ ] `\dt` inside `wsb-postgres` lists `posts`, `tickers`, `research_snapshots`, `ratings`.
+- [ ] `\dt` inside `wsb-postgres` lists `posts`, `tickers`, `research_snapshots`, `ratings`, `research_snapshots_archive`, `ratings_archive`.
 - [ ] Manual run of v4 → `SELECT count(*) FROM posts;` increases.
 - [ ] Discord still posts coloured embeds (regression check).
 - [ ] Manual run of Research and Rate → `SELECT * FROM ratings ORDER BY created_at DESC LIMIT 5;` shows ratings.
 - [ ] No 429s in n8n executions for the research workflow.
+- [ ] Manual run of Cleanup and Archive → last-node output reports `snapshots_deleted == snapshots_archived` and `ratings_deleted == ratings_archived`; spot-check with `SELECT count(*) FROM research_snapshots_archive;`.
 - [ ] `npm run typecheck && npm run lint` are clean.
 - [ ] Dashboard renders rows; clicking a ticker shows price, sentiment chart, rating history, posts, news.
 
@@ -182,10 +191,10 @@ docker compose pull n8n && docker compose up -d n8n   # if you're running n8n in
 Schema changes in `db/init.sql` are NOT auto-applied to an existing volume — `init.sql` only runs on first startup of an empty data directory. Apply migrations manually:
 
 ```bash
-docker exec -i wsb-postgres psql -U wsb -d wsb < db/migrations/001-whatever.sql
+docker exec -i wsb-postgres psql -U wsb -d wsb < db/migrations/001-create-archive-tables.sql
 ```
 
-(Create the `db/migrations/` folder when you have your first migration.)
+Migrations live in `db/migrations/` and are numbered in apply order. New migrations should also be appended to `init.sql` so fresh deployments get them automatically.
 
 ## Out of scope (future work)
 

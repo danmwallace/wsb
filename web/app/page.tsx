@@ -1,5 +1,6 @@
 import { listDashboardRows } from "@/lib/queries";
 import { StockTable } from "@/components/StockTable";
+import { AddTickerForm } from "@/components/AddTickerForm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -42,6 +43,7 @@ export default async function Dashboard() {
           ) : null}
         </div>
       </div>
+      <AddTickerForm />
       <StockTable rows={rows} />
     </div>
   );

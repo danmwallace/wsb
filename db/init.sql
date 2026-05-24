@@ -100,4 +100,38 @@ AFTER INSERT ON posts
 FOR EACH ROW
 EXECUTE FUNCTION upsert_ticker_on_post_insert();
 
+-- Archive destinations for the Cleanup and Archive workflow. Same shape as the
+-- hot tables but without the FK on tickers, so a future "delete stock" action
+-- does not cascade history away. `archived_at` records when the row was moved.
+CREATE TABLE IF NOT EXISTS research_snapshots_archive (
+  ticker          TEXT NOT NULL,
+  as_of_date      DATE NOT NULL,
+  price           NUMERIC(14, 4),
+  change_pct_1d   NUMERIC(8, 4),
+  change_pct_5d   NUMERIC(8, 4),
+  change_pct_ytd  NUMERIC(8, 4),
+  market_cap      NUMERIC(20, 2),
+  pe_ratio        NUMERIC(10, 2),
+  news            JSONB,
+  fundamentals    JSONB,
+  fetched_at      TIMESTAMPTZ NOT NULL,
+  archived_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (ticker, as_of_date)
+);
+CREATE INDEX IF NOT EXISTS research_snapshots_archive_date_idx
+  ON research_snapshots_archive (as_of_date DESC);
+
+CREATE TABLE IF NOT EXISTS ratings_archive (
+  ticker      TEXT NOT NULL,
+  as_of_date  DATE NOT NULL,
+  rating      TEXT NOT NULL CHECK (rating IN ('Buy', 'Sell', 'Hold')),
+  confidence  INT  NOT NULL CHECK (confidence BETWEEN 0 AND 100),
+  rationale   TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL,
+  archived_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (ticker, as_of_date)
+);
+CREATE INDEX IF NOT EXISTS ratings_archive_date_idx
+  ON ratings_archive (as_of_date DESC);
+
 COMMIT;
