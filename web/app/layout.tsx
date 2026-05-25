@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import { BASE_URL } from "@/lib/config";
 
 export const metadata: Metadata = {
-  title: "WSB Pulse",
-  description: "Wall Street Bets sentiment + research dashboard",
+  metadataBase: new URL(BASE_URL),
+  title: { default: "WSB Pulse", template: "%s · WSB Pulse" },
+  description:
+    "What r/WallStreetBets is buzzing about — tickers scored on sentiment and rated by AI. Rolling 90-day window.",
+  openGraph: { title: "WSB Pulse", description: "r/WallStreetBets sentiment, rated by AI.", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({

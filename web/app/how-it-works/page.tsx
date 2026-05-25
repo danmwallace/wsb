@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "How it works · WSB Pulse",
+  title: "How it works",
   description: "How WSB Pulse collects tickers, scores sentiment, and rates stocks with AI.",
 };
 

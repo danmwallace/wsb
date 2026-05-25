@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+import { cache } from "react";
 import { query } from "./db";
 import { classifyRatingChange, classifySpike, mergeMovers, type TopMover } from "./movers";
 
@@ -68,9 +70,10 @@ export interface PostRow {
   observed_at: Date;
 }
 
-export async function listDashboardRows(): Promise<DashboardRow[]> {
-  return query<DashboardRow>(
-    `
+export const listDashboardRows = unstable_cache(
+  async (): Promise<DashboardRow[]> => {
+    return query<DashboardRow>(
+      `
     SELECT
       t.ticker,
       t.company,
@@ -96,10 +99,13 @@ export async function listDashboardRows(): Promise<DashboardRow[]> {
              s.price, s.change_pct_1d
     ORDER BY r.confidence DESC NULLS LAST, t.last_seen_at DESC
     `
-  );
-}
+    );
+  },
+  ["dashboard-rows"],
+  { revalidate: 1800 }
+);
 
-export async function getTickerDetail(ticker: string): Promise<TickerDetail | null> {
+export const getTickerDetail = cache(async (ticker: string): Promise<TickerDetail | null> => {
   const rows = await query<TickerDetail & { news: unknown; fundamentals: unknown }>(
     `
     SELECT
@@ -133,7 +139,7 @@ export async function getTickerDetail(ticker: string): Promise<TickerDetail | nu
         ? (r.fundamentals as Record<string, unknown>)
         : null,
   };
-}
+});
 
 export async function getRatingHistory(
   ticker: string,
@@ -188,10 +194,11 @@ export async function getPostsForTicker(
   );
 }
 
-export async function listTopMovers(cap = 6): Promise<TopMover[]> {
-  const [ratingRows, spikeRows] = await Promise.all([
-    query<{ ticker: string; company: string | null; rating: Rating; prev_rating: Rating; as_of_date: Date }>(
-      `
+export const listTopMovers = unstable_cache(
+  async (): Promise<TopMover[]> => {
+    const [ratingRows, spikeRows] = await Promise.all([
+      query<{ ticker: string; company: string | null; rating: Rating; prev_rating: Rating; as_of_date: Date }>(
+        `
     WITH ranked AS (
       SELECT r.ticker, r.as_of_date, r.rating,
              LAG(r.rating)   OVER (PARTITION BY r.ticker ORDER BY r.as_of_date) AS prev_rating,
@@ -208,9 +215,9 @@ export async function listTopMovers(cap = 6): Promise<TopMover[]> {
     ORDER BY ranked.as_of_date DESC
     LIMIT 20
     `
-    ),
-    query<{ ticker: string; company: string | null; recent: string; prior: string; pos: string; neu: string; neg: string }>(
-      `
+      ),
+      query<{ ticker: string; company: string | null; recent: string; prior: string; pos: string; neu: string; neg: string }>(
+        `
     SELECT t.ticker, t.company,
       COUNT(*) FILTER (WHERE p.observed_at >  now() - interval '7 days')                               AS recent,
       COUNT(*) FILTER (WHERE p.observed_at <= now() - interval '7 days'
@@ -222,24 +229,27 @@ export async function listTopMovers(cap = 6): Promise<TopMover[]> {
     WHERE p.observed_at > now() - interval '14 days'
     GROUP BY t.ticker, t.company
     `
-    ),
-  ]);
+      ),
+    ]);
 
-  const ratingMovers = ratingRows.map((r) =>
-    classifyRatingChange({
-      ticker: r.ticker, company: r.company, rating: r.rating,
-      prevRating: r.prev_rating, asOf: new Date(r.as_of_date),
-    })
-  );
-  const spikeMovers = spikeRows
-    .map((s) =>
-      classifySpike({
-        ticker: s.ticker, company: s.company,
-        recent: Number(s.recent), prior: Number(s.prior),
-        pos: Number(s.pos), neu: Number(s.neu), neg: Number(s.neg),
+    const ratingMovers = ratingRows.map((r) =>
+      classifyRatingChange({
+        ticker: r.ticker, company: r.company, rating: r.rating,
+        prevRating: r.prev_rating, asOf: new Date(r.as_of_date),
       })
-    )
-    .filter((m): m is TopMover => m !== null);
+    );
+    const spikeMovers = spikeRows
+      .map((s) =>
+        classifySpike({
+          ticker: s.ticker, company: s.company,
+          recent: Number(s.recent), prior: Number(s.prior),
+          pos: Number(s.pos), neu: Number(s.neu), neg: Number(s.neg),
+        })
+      )
+      .filter((m): m is TopMover => m !== null);
 
-  return mergeMovers(ratingMovers, spikeMovers, cap);
-}
+    return mergeMovers(ratingMovers, spikeMovers);
+  },
+  ["top-movers"],
+  { revalidate: 1800 }
+);

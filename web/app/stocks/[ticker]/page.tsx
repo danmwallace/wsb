@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -17,6 +18,18 @@ export const revalidate = 0;
 
 interface PageProps {
   params: Promise<{ ticker: string }>;
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { ticker: raw } = await params;
+  const ticker = decodeURIComponent(raw).toUpperCase();
+  const detail = await getTickerDetail(ticker);
+  if (!detail) return { title: "Ticker not found" };
+  const name = detail.company ? `${ticker} — ${detail.company}` : ticker;
+  return {
+    title: name,
+    description: `${name}: WSB sentiment, AI rating, and research over the last 90 days.`,
+  };
 }
 
 export default async function TickerPage({ params }: PageProps) {

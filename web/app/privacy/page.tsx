@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy · WSB Pulse",
+  title: "Privacy",
   description: "WSB Pulse privacy policy.",
 };
 

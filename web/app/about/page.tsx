@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "About · WSB Pulse",
+  title: "About",
   description: "About WSB Pulse — a hobby project tracking r/WallStreetBets stock sentiment.",
 };
 
