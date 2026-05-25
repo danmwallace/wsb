@@ -101,6 +101,33 @@ Open <http://localhost:3000>. With an empty database you'll see the empty state;
 
 See [`db/README.md`](./db/README.md) for connection info and example queries.
 
+## Managing tickers (manual)
+
+The dashboard is read-only; tickers are managed directly against Postgres in the `wsb-postgres` container.
+
+### Add a ticker
+
+Seeds it so the next "Research and Rate" run picks it up. `mention_count: 0` marks it as manually added.
+
+```sh
+docker exec -i wsb-postgres psql -U wsb -d wsb -c \
+  "INSERT INTO tickers (ticker, company, first_seen_at, last_seen_at, mention_count) \
+   VALUES ('XYZ', 'Example Corp', now(), now(), 0) ON CONFLICT (ticker) DO NOTHING;"
+```
+
+Replace `XYZ` with the ticker symbol and `Example Corp` with the company name.
+
+### Delete a ticker
+
+Posts must be deleted explicitly so the insert-trigger doesn't recreate the row. `research_snapshots` and `ratings` cascade; archived rows are retained.
+
+```sh
+docker exec -i wsb-postgres psql -U wsb -d wsb -c \
+  "DELETE FROM posts WHERE ticker='XYZ'; DELETE FROM tickers WHERE ticker='XYZ';"
+```
+
+Replace `XYZ` with the ticker symbol.
+
 ## Files
 
 ```
