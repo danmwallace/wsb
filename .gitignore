@@ -24,3 +24,6 @@ workflows/Wallstreet Bets v4.json
 # if/when present), ignore personal overrides and runtime cache.
 .claude/settings.local.json
 .claude/agent-memory/
+
+# Brainstorming visual-companion mockups
+.superpowers/
