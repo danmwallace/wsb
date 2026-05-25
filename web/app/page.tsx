@@ -2,6 +2,7 @@ import { listDashboardRows, listTopMovers } from "@/lib/queries";
 import { StockTable } from "@/components/StockTable";
 import { Hero } from "@/components/Hero";
 import { TopMovers } from "@/components/TopMovers";
+import { AdSlot } from "@/components/AdSlot";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,7 +32,9 @@ export default async function Dashboard() {
           <SummaryPill label="Unrated" count={counts.unrated} className="text-neutral-500" />
         ) : null}
       </div>
+      <AdSlot variant="leaderboard" />
       <TopMovers movers={movers} />
+      <AdSlot variant="in-feed" />
       <StockTable rows={rows} />
     </div>
   );
