@@ -1,12 +1,13 @@
-import { listDashboardRows } from "@/lib/queries";
+import { listDashboardRows, listTopMovers } from "@/lib/queries";
 import { StockTable } from "@/components/StockTable";
 import { Hero } from "@/components/Hero";
+import { TopMovers } from "@/components/TopMovers";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function Dashboard() {
-  const rows = await listDashboardRows();
+  const [rows, movers] = await Promise.all([listDashboardRows(), listTopMovers()]);
 
   const counts = rows.reduce(
     (acc, r) => {
@@ -30,6 +31,7 @@ export default async function Dashboard() {
           <SummaryPill label="Unrated" count={counts.unrated} className="text-neutral-500" />
         ) : null}
       </div>
+      <TopMovers movers={movers} />
       <StockTable rows={rows} />
     </div>
   );

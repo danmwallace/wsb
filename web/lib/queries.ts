@@ -1,4 +1,5 @@
 import { query } from "./db";
+import { classifyRatingChange, classifySpike, mergeMovers, type TopMover } from "./movers";
 
 export type Rating = "Buy" | "Hold" | "Sell";
 export type Sentiment = "Positive" | "Neutral" | "Negative";
@@ -185,4 +186,60 @@ export async function getPostsForTicker(
     `,
     [ticker, limit]
   );
+}
+
+export async function listTopMovers(cap = 6): Promise<TopMover[]> {
+  const [ratingRows, spikeRows] = await Promise.all([
+    query<{ ticker: string; company: string | null; rating: Rating; prev_rating: Rating; as_of_date: Date }>(
+      `
+    WITH ranked AS (
+      SELECT r.ticker, r.as_of_date, r.rating,
+             LAG(r.rating)   OVER (PARTITION BY r.ticker ORDER BY r.as_of_date) AS prev_rating,
+             ROW_NUMBER()    OVER (PARTITION BY r.ticker ORDER BY r.as_of_date DESC) AS rn
+      FROM ratings r
+      WHERE r.as_of_date > current_date - 90
+    )
+    SELECT ranked.ticker, t.company, ranked.rating, ranked.prev_rating, ranked.as_of_date
+    FROM ranked JOIN tickers t ON t.ticker = ranked.ticker
+    WHERE ranked.rn = 1
+      AND ranked.as_of_date > current_date - 30
+      AND ranked.prev_rating IS NOT NULL
+      AND ranked.rating <> ranked.prev_rating
+    ORDER BY ranked.as_of_date DESC
+    LIMIT 20
+    `
+    ),
+    query<{ ticker: string; company: string | null; recent: string; prior: string; pos: string; neu: string; neg: string }>(
+      `
+    SELECT t.ticker, t.company,
+      COUNT(*) FILTER (WHERE p.observed_at >  now() - interval '7 days')                               AS recent,
+      COUNT(*) FILTER (WHERE p.observed_at <= now() - interval '7 days'
+                         AND p.observed_at >  now() - interval '14 days')                              AS prior,
+      COUNT(*) FILTER (WHERE p.observed_at >  now() - interval '7 days' AND p.sentiment = 'Positive')  AS pos,
+      COUNT(*) FILTER (WHERE p.observed_at >  now() - interval '7 days' AND p.sentiment = 'Neutral')   AS neu,
+      COUNT(*) FILTER (WHERE p.observed_at >  now() - interval '7 days' AND p.sentiment = 'Negative')  AS neg
+    FROM posts p JOIN tickers t ON t.ticker = p.ticker
+    WHERE p.observed_at > now() - interval '14 days'
+    GROUP BY t.ticker, t.company
+    `
+    ),
+  ]);
+
+  const ratingMovers = ratingRows.map((r) =>
+    classifyRatingChange({
+      ticker: r.ticker, company: r.company, rating: r.rating,
+      prevRating: r.prev_rating, asOf: new Date(r.as_of_date),
+    })
+  );
+  const spikeMovers = spikeRows
+    .map((s) =>
+      classifySpike({
+        ticker: s.ticker, company: s.company,
+        recent: Number(s.recent), prior: Number(s.prior),
+        pos: Number(s.pos), neu: Number(s.neu), neg: Number(s.neg),
+      })
+    )
+    .filter((m): m is TopMover => m !== null);
+
+  return mergeMovers(ratingMovers, spikeMovers, cap);
 }
