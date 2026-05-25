@@ -1,5 +1,6 @@
 import { listDashboardRows } from "@/lib/queries";
 import { StockTable } from "@/components/StockTable";
+import { Hero } from "@/components/Hero";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,27 +21,14 @@ export default async function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Today&apos;s WSB pulse
-          </h1>
-          <p className="text-sm text-neutral-400">
-            Tickers ranked by Claude&apos;s confidence in its latest rating.
-          </p>
-        </div>
-        <div className="flex gap-3 text-xs">
-          <SummaryPill label="Buy" count={counts.buy} className="text-rating-buy" />
-          <SummaryPill label="Hold" count={counts.hold} className="text-neutral-300" />
-          <SummaryPill label="Sell" count={counts.sell} className="text-rating-sell" />
-          {counts.unrated > 0 ? (
-            <SummaryPill
-              label="Unrated"
-              count={counts.unrated}
-              className="text-neutral-500"
-            />
-          ) : null}
-        </div>
+      <Hero />
+      <div className="flex flex-wrap gap-3 text-xs">
+        <SummaryPill label="Buy" count={counts.buy} className="text-rating-buy" />
+        <SummaryPill label="Hold" count={counts.hold} className="text-neutral-300" />
+        <SummaryPill label="Sell" count={counts.sell} className="text-rating-sell" />
+        {counts.unrated > 0 ? (
+          <SummaryPill label="Unrated" count={counts.unrated} className="text-neutral-500" />
+        ) : null}
       </div>
       <StockTable rows={rows} />
     </div>
