@@ -11,7 +11,6 @@ import { SentimentChart } from "@/components/SentimentChart";
 import { RatingTimeline } from "@/components/RatingTimeline";
 import { PostList } from "@/components/PostList";
 import { NewsList } from "@/components/NewsList";
-import { DeleteStockButton } from "@/components/DeleteStockButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,14 +51,11 @@ export default async function TickerPage({ params }: PageProps) {
         <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-300">
           ← Back to dashboard
         </Link>
-        <div className="mt-2 flex items-end justify-between gap-3">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight">{detail.ticker}</h1>
-            <span className="text-base text-neutral-400">
-              {detail.company ?? ""}
-            </span>
-          </div>
-          <DeleteStockButton ticker={detail.ticker} />
+        <div className="mt-2 flex items-baseline gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight">{detail.ticker}</h1>
+          <span className="text-base text-neutral-400">
+            {detail.company ?? ""}
+          </span>
         </div>
       </div>
 
