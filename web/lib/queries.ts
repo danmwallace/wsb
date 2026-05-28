@@ -17,9 +17,9 @@ export interface DashboardRow {
   rationale: string | null;
   price: string | null;
   change_pct_1d: string | null;
-  pos_7d: number;
-  neu_7d: number;
-  neg_7d: number;
+  pos: number;
+  neu: number;
+  neg: number;
 }
 
 export interface NewsHeadline {
@@ -85,15 +85,13 @@ export const listDashboardRows = unstable_cache(
       r.rationale,
       s.price,
       s.change_pct_1d,
-      COALESCE(SUM(CASE WHEN p.sentiment = 'Positive' THEN 1 ELSE 0 END), 0)::int AS pos_7d,
-      COALESCE(SUM(CASE WHEN p.sentiment = 'Neutral'  THEN 1 ELSE 0 END), 0)::int AS neu_7d,
-      COALESCE(SUM(CASE WHEN p.sentiment = 'Negative' THEN 1 ELSE 0 END), 0)::int AS neg_7d
+      COALESCE(SUM(CASE WHEN p.sentiment = 'Positive' THEN 1 ELSE 0 END), 0)::int AS pos,
+      COALESCE(SUM(CASE WHEN p.sentiment = 'Neutral'  THEN 1 ELSE 0 END), 0)::int AS neu,
+      COALESCE(SUM(CASE WHEN p.sentiment = 'Negative' THEN 1 ELSE 0 END), 0)::int AS neg
     FROM tickers t
     LEFT JOIN v_latest_rating   r ON r.ticker = t.ticker
     LEFT JOIN v_latest_snapshot s ON s.ticker = t.ticker
-    LEFT JOIN posts p
-           ON p.ticker = t.ticker
-          AND p.observed_at > now() - interval '7 days'
+    LEFT JOIN posts p ON p.ticker = t.ticker
     GROUP BY t.ticker, t.company, t.mention_count, t.last_seen_at,
              r.rating, r.confidence, r.as_of_date, r.rationale,
              s.price, s.change_pct_1d

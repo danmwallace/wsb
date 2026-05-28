@@ -23,7 +23,7 @@ export function StockTable({ rows }: { rows: DashboardRow[] }) {
               <th className="px-4 py-3 font-medium">Rating</th>
               <th className="px-4 py-3 font-medium">Price</th>
               <th className="px-4 py-3 font-medium">1d</th>
-              <th className="px-4 py-3 font-medium">Sentiment (7d)</th>
+              <th className="px-4 py-3 font-medium">Sentiment</th>
               <th className="px-4 py-3 font-medium">Mentions</th>
               <th className="px-4 py-3 font-medium">Last seen</th>
             </tr>
@@ -50,7 +50,7 @@ export function StockTable({ rows }: { rows: DashboardRow[] }) {
                     {fmtPct(change)}
                   </td>
                   <td className="px-4 py-3">
-                    <SentimentSparkline positive={r.pos_7d} neutral={r.neu_7d} negative={r.neg_7d} />
+                    <SentimentSparkline positive={r.pos} neutral={r.neu} negative={r.neg} />
                   </td>
                   <td className="px-4 py-3 tabular-nums text-neutral-300">{r.mention_count}</td>
                   <td className="px-4 py-3 text-xs text-neutral-500">{fmtRelative(r.last_seen_at)}</td>
@@ -78,9 +78,9 @@ export function StockTable({ rows }: { rows: DashboardRow[] }) {
                 <Cell label="Price"><span className="tabular-nums">{fmtUsd(r.price)}</span></Cell>
                 <Cell label="1d"><span className={`tabular-nums ${changeClass(change)}`}>{fmtPct(change)}</span></Cell>
                 <Cell label="Mentions"><span className="tabular-nums text-neutral-300">{r.mention_count}</span></Cell>
-                <Cell label="Sentiment 7d">
+                <Cell label="Sentiment">
                   <span className="text-neutral-300">
-                    {r.pos_7d + r.neu_7d + r.neg_7d === 0 ? "—" : `${r.pos_7d}/${r.neu_7d}/${r.neg_7d}`}
+                    {r.pos + r.neu + r.neg === 0 ? "—" : `${r.pos}/${r.neu}/${r.neg}`}
                   </span>
                 </Cell>
                 <Cell label="Last seen"><span className="text-neutral-400">{fmtRelative(r.last_seen_at)}</span></Cell>
