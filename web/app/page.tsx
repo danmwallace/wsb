@@ -3,12 +3,20 @@ import { StockTable } from "@/components/StockTable";
 import { Hero } from "@/components/Hero";
 import { TopMovers } from "@/components/TopMovers";
 import { AdSlot } from "@/components/AdSlot";
+import { Pagination } from "@/components/Pagination";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function Dashboard() {
+const PAGE_SIZE = 25;
+
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const [rows, movers] = await Promise.all([listDashboardRows(), listTopMovers()]);
+  const { page: pageParam } = await searchParams;
 
   const counts = rows.reduce(
     (acc, r) => {
@@ -20,6 +28,13 @@ export default async function Dashboard() {
     },
     { buy: 0, hold: 0, sell: 0, unrated: 0 }
   );
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const requested = Number.parseInt(pageParam ?? "1", 10);
+  const page = Number.isNaN(requested)
+    ? 1
+    : Math.min(Math.max(requested, 1), totalPages);
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -35,7 +50,8 @@ export default async function Dashboard() {
       <AdSlot variant="leaderboard" />
       <TopMovers movers={movers} />
       <AdSlot variant="in-feed" />
-      <StockTable rows={rows} />
+      <StockTable rows={pageRows} />
+      <Pagination currentPage={page} totalPages={totalPages} />
     </div>
   );
 }
