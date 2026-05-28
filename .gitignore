@@ -15,9 +15,8 @@ web/.env*.local
 # Build artifacts
 web/tsconfig.tsbuildinfo
 
-# n8n source-of-truth lives in the running instance for these flows;
+# n8n source-of-truth lives in the running instance for this flow;
 # re-export when there's a meaningful change worth committing.
-workflows/Research and Rate v1.json
 workflows/Wallstreet Bets v4.json
 
 # Claude Code: track shared project config (.claude/agents/, .claude/settings.json

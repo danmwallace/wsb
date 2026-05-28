@@ -20,6 +20,7 @@ export interface DashboardRow {
   pos: number;
   neu: number;
   neg: number;
+  target_mean: string | null;
 }
 
 export interface NewsHeadline {
@@ -74,29 +75,31 @@ export const listDashboardRows = unstable_cache(
   async (): Promise<DashboardRow[]> => {
     return query<DashboardRow>(
       `
-    SELECT
-      t.ticker,
-      t.company,
-      t.mention_count,
-      t.last_seen_at,
-      r.rating,
-      r.confidence,
-      r.as_of_date AS rating_as_of,
-      r.rationale,
-      s.price,
-      s.change_pct_1d,
-      COALESCE(SUM(CASE WHEN p.sentiment = 'Positive' THEN 1 ELSE 0 END), 0)::int AS pos,
-      COALESCE(SUM(CASE WHEN p.sentiment = 'Neutral'  THEN 1 ELSE 0 END), 0)::int AS neu,
-      COALESCE(SUM(CASE WHEN p.sentiment = 'Negative' THEN 1 ELSE 0 END), 0)::int AS neg
-    FROM tickers t
-    LEFT JOIN v_latest_rating   r ON r.ticker = t.ticker
-    LEFT JOIN v_latest_snapshot s ON s.ticker = t.ticker
-    LEFT JOIN posts p ON p.ticker = t.ticker
-    GROUP BY t.ticker, t.company, t.mention_count, t.last_seen_at,
-             r.rating, r.confidence, r.as_of_date, r.rationale,
-             s.price, s.change_pct_1d
-    ORDER BY r.confidence DESC NULLS LAST, t.last_seen_at DESC
-    `
+  SELECT
+    t.ticker,
+    t.company,
+    t.mention_count,
+    t.last_seen_at,
+    r.rating,
+    r.confidence,
+    r.as_of_date AS rating_as_of,
+    r.rationale,
+    s.price,
+    s.change_pct_1d,
+    COALESCE(SUM(CASE WHEN p.sentiment = 'Positive' THEN 1 ELSE 0 END), 0)::int AS pos,
+    COALESCE(SUM(CASE WHEN p.sentiment = 'Neutral'  THEN 1 ELSE 0 END), 0)::int AS neu,
+    COALESCE(SUM(CASE WHEN p.sentiment = 'Negative' THEN 1 ELSE 0 END), 0)::int AS neg,
+    a.target_mean
+  FROM tickers t
+  LEFT JOIN v_latest_rating   r ON r.ticker = t.ticker
+  LEFT JOIN v_latest_snapshot s ON s.ticker = t.ticker
+  LEFT JOIN v_latest_analyst  a ON a.ticker = t.ticker
+  LEFT JOIN posts p ON p.ticker = t.ticker
+  GROUP BY t.ticker, t.company, t.mention_count, t.last_seen_at,
+           r.rating, r.confidence, r.as_of_date, r.rationale,
+           s.price, s.change_pct_1d, a.target_mean
+  ORDER BY r.confidence DESC NULLS LAST, t.last_seen_at DESC
+  `
     );
   },
   ["dashboard-rows"],
@@ -250,4 +253,39 @@ export const listTopMovers = unstable_cache(
   },
   ["top-movers"],
   { revalidate: 1800 }
+);
+
+export interface AnalystSnapshot {
+  ticker: string;
+  as_of_date: Date;
+  rec_period: Date | null;
+  rec_strong_buy: number | null;
+  rec_buy: number | null;
+  rec_hold: number | null;
+  rec_sell: number | null;
+  rec_strong_sell: number | null;
+  target_high: string | null;
+  target_low: string | null;
+  target_mean: string | null;
+  target_median: string | null;
+  target_updated_at: Date | null;
+  fetched_at: Date;
+}
+
+export const getAnalystSnapshot = cache(
+  async (ticker: string): Promise<AnalystSnapshot | null> => {
+    const rows = await query<AnalystSnapshot>(
+      `
+    SELECT
+      ticker, as_of_date, rec_period,
+      rec_strong_buy, rec_buy, rec_hold, rec_sell, rec_strong_sell,
+      target_high, target_low, target_mean, target_median,
+      target_updated_at, fetched_at
+    FROM v_latest_analyst
+    WHERE ticker = $1
+    `,
+      [ticker]
+    );
+    return rows[0] ?? null;
+  }
 );

@@ -5,7 +5,10 @@
       "parameters": {},
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [-1200, 0],
+      "position": [
+        -1200,
+        0
+      ],
       "id": "c1111111-1111-4111-9111-111111111111",
       "name": "When clicking 'Execute workflow'"
     },
@@ -22,19 +25,25 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-1200, 200],
+      "position": [
+        -1200,
+        200
+      ],
       "id": "c2222222-2222-4222-9222-222222222222",
       "name": "Weekly Sunday 03:00 ET"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Archive then delete rows older than the retention window. Wrapped in a\n-- single statement so DELETE + INSERT are atomic: any failure rolls both back\n-- and the data stays in the hot tables. ON CONFLICT DO NOTHING makes the\n-- workflow safe to re-run after a partial archive (e.g. a manual replay).\nWITH\n  cutoff AS (\n    SELECT (CURRENT_DATE - INTERVAL '90 days')::date AS d\n  ),\n  deleted_snapshots AS (\n    DELETE FROM research_snapshots\n    WHERE as_of_date < (SELECT d FROM cutoff)\n    RETURNING ticker, as_of_date, price, change_pct_1d, change_pct_5d,\n              change_pct_ytd, market_cap, pe_ratio, news, fundamentals, fetched_at\n  ),\n  archived_snapshots AS (\n    INSERT INTO research_snapshots_archive\n      (ticker, as_of_date, price, change_pct_1d, change_pct_5d, change_pct_ytd,\n       market_cap, pe_ratio, news, fundamentals, fetched_at)\n    SELECT ticker, as_of_date, price, change_pct_1d, change_pct_5d, change_pct_ytd,\n           market_cap, pe_ratio, news, fundamentals, fetched_at\n    FROM deleted_snapshots\n    ON CONFLICT (ticker, as_of_date) DO NOTHING\n    RETURNING ticker\n  ),\n  deleted_ratings AS (\n    DELETE FROM ratings\n    WHERE as_of_date < (SELECT d FROM cutoff)\n    RETURNING ticker, as_of_date, rating, confidence, rationale, created_at\n  ),\n  archived_ratings AS (\n    INSERT INTO ratings_archive\n      (ticker, as_of_date, rating, confidence, rationale, created_at)\n    SELECT ticker, as_of_date, rating, confidence, rationale, created_at\n    FROM deleted_ratings\n    ON CONFLICT (ticker, as_of_date) DO NOTHING\n    RETURNING ticker\n  )\nSELECT\n  (SELECT d FROM cutoff)                       AS cutoff_date,\n  (SELECT count(*) FROM deleted_snapshots)     AS snapshots_deleted,\n  (SELECT count(*) FROM archived_snapshots)    AS snapshots_archived,\n  (SELECT count(*) FROM deleted_ratings)       AS ratings_deleted,\n  (SELECT count(*) FROM archived_ratings)      AS ratings_archived;",
+        "query": "-- Archive then delete rows older than the retention window. Wrapped in a\n-- single statement so DELETE + INSERT are atomic: any failure rolls both back\n-- and the data stays in the hot tables. ON CONFLICT DO NOTHING makes the\n-- workflow safe to re-run after a partial archive (e.g. a manual replay).\nWITH\n  cutoff AS (\n    SELECT (CURRENT_DATE - INTERVAL '90 days')::date AS d\n  ),\n  deleted_snapshots AS (\n    DELETE FROM research_snapshots\n    WHERE as_of_date < (SELECT d FROM cutoff)\n    RETURNING ticker, as_of_date, price, change_pct_1d, change_pct_5d,\n              change_pct_ytd, market_cap, pe_ratio, news, fundamentals, fetched_at\n  ),\n  archived_snapshots AS (\n    INSERT INTO research_snapshots_archive\n      (ticker, as_of_date, price, change_pct_1d, change_pct_5d, change_pct_ytd,\n       market_cap, pe_ratio, news, fundamentals, fetched_at)\n    SELECT ticker, as_of_date, price, change_pct_1d, change_pct_5d, change_pct_ytd,\n           market_cap, pe_ratio, news, fundamentals, fetched_at\n    FROM deleted_snapshots\n    ON CONFLICT (ticker, as_of_date) DO NOTHING\n    RETURNING ticker\n  ),\n  deleted_ratings AS (\n    DELETE FROM ratings\n    WHERE as_of_date < (SELECT d FROM cutoff)\n    RETURNING ticker, as_of_date, rating, confidence, rationale, created_at\n  ),\n  archived_ratings AS (\n    INSERT INTO ratings_archive\n      (ticker, as_of_date, rating, confidence, rationale, created_at)\n    SELECT ticker, as_of_date, rating, confidence, rationale, created_at\n    FROM deleted_ratings\n    ON CONFLICT (ticker, as_of_date) DO NOTHING\n    RETURNING ticker\n  ),\n  deleted_analyst AS (\n    DELETE FROM analyst_snapshots\n    WHERE as_of_date < (SELECT d FROM cutoff)\n    RETURNING ticker, as_of_date, rec_period,\n              rec_strong_buy, rec_buy, rec_hold, rec_sell, rec_strong_sell,\n              target_high, target_low, target_mean, target_median,\n              target_updated_at, fetched_at\n  ),\n  archived_analyst AS (\n    INSERT INTO analyst_snapshots_archive\n      (ticker, as_of_date, rec_period,\n       rec_strong_buy, rec_buy, rec_hold, rec_sell, rec_strong_sell,\n       target_high, target_low, target_mean, target_median,\n       target_updated_at, fetched_at)\n    SELECT ticker, as_of_date, rec_period,\n           rec_strong_buy, rec_buy, rec_hold, rec_sell, rec_strong_sell,\n           target_high, target_low, target_mean, target_median,\n           target_updated_at, fetched_at\n    FROM deleted_analyst\n    ON CONFLICT (ticker, as_of_date) DO NOTHING\n    RETURNING ticker\n  )\nSELECT\n  (SELECT d FROM cutoff)                       AS cutoff_date,\n  (SELECT count(*) FROM deleted_snapshots)     AS snapshots_deleted,\n  (SELECT count(*) FROM archived_snapshots)    AS snapshots_archived,\n  (SELECT count(*) FROM deleted_ratings)       AS ratings_deleted,\n  (SELECT count(*) FROM archived_ratings)      AS ratings_archived,\n  (SELECT count(*) FROM deleted_analyst)       AS analyst_deleted,\n  (SELECT count(*) FROM archived_analyst)      AS analyst_archived;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [-960, 100],
+      "position": [
+        -960,
+        100
+      ],
       "id": "c3333333-3333-4333-9333-333333333333",
       "name": "Archive + delete older than 90d",
       "credentials": {
@@ -46,11 +55,14 @@
     },
     {
       "parameters": {
-        "jsCode": "// Surface the cleanup result in the execution log. n8n shows the last node's\n// output prominently, so this gives the operator a one-glance summary of what\n// the cron run did without having to open the Postgres node's data tab.\nconst r = $input.first().json;\nconst summary = `cutoff=${r.cutoff_date} snapshots: deleted=${r.snapshots_deleted} archived=${r.snapshots_archived} | ratings: deleted=${r.ratings_deleted} archived=${r.ratings_archived}`;\nconsole.log('[Cleanup and Archive]', summary);\nreturn [{ json: { ...r, summary } }];"
+        "jsCode": "// Surface the cleanup result in the execution log. n8n shows the last node's\n// output prominently, so this gives the operator a one-glance summary of what\n// the cron run did without having to open the Postgres node's data tab.\nconst r = $input.first().json;\nconst summary = `cutoff=${r.cutoff_date} snapshots: deleted=${r.snapshots_deleted} archived=${r.snapshots_archived} | ratings: deleted=${r.ratings_deleted} archived=${r.ratings_archived} | analyst: deleted=${r.analyst_deleted} archived=${r.analyst_archived}`;\nconsole.log('[Cleanup and Archive]', summary);\nreturn [{ json: { ...r, summary } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-720, 100],
+      "position": [
+        -720,
+        100
+      ],
       "id": "c4444444-4444-4444-9444-444444444444",
       "name": "Log counts"
     }
@@ -58,13 +70,37 @@
   "pinData": {},
   "connections": {
     "When clicking 'Execute workflow'": {
-      "main": [[{ "node": "Archive + delete older than 90d", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Archive + delete older than 90d",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Weekly Sunday 03:00 ET": {
-      "main": [[{ "node": "Archive + delete older than 90d", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Archive + delete older than 90d",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Archive + delete older than 90d": {
-      "main": [[{ "node": "Log counts", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Log counts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,

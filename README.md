@@ -45,6 +45,8 @@ Create three credentials in the n8n UI:
 
 Get a Finnhub key (free): https://finnhub.io/dashboard
 
+> **Note on `Research and Rate v1`:** The workflow calls Finnhub's `recommendation` and `price-target` endpoints in addition to quote/news/metrics. `recommendation` is on the free tier. `price-target` may require a paid plan; the workflow degrades gracefully (writes null targets, dashboard renders "Analyst coverage not available for this ticker.") if Finnhub returns 403 on that endpoint.
+
 ### 3. Import the workflows
 
 In n8n: **Workflows → Import from File** for each:
@@ -59,7 +61,10 @@ If you're importing into an existing deployment (database already running, not a
 
 ```bash
 docker exec -i wsb-postgres psql -U wsb -d wsb < db/migrations/001-create-archive-tables.sql
+ssh ansible@10.10.70.6 'docker exec -i wsb-postgres psql -U wsb -d wsb' < db/migrations/002-create-analyst-tables.sql
 ```
+
+Postgres runs in the `wsb-postgres` container on the remote host `10.10.70.6`. The bare `docker exec` form works when you're on that host; from your workstation, wrap it in `ssh ansible@10.10.70.6 '...'` as shown for the `002` line.
 
 Test with the manual trigger before activating the schedule triggers. Once both flows look healthy, **deactivate the old `Wallstreet Bets v3`** so you don't double-write.
 
@@ -219,6 +224,7 @@ Schema changes in `db/init.sql` are NOT auto-applied to an existing volume — `
 
 ```bash
 docker exec -i wsb-postgres psql -U wsb -d wsb < db/migrations/001-create-archive-tables.sql
+ssh ansible@10.10.70.6 'docker exec -i wsb-postgres psql -U wsb -d wsb' < db/migrations/002-create-analyst-tables.sql
 ```
 
 Migrations live in `db/migrations/` and are numbered in apply order. New migrations should also be appended to `init.sql` so fresh deployments get them automatically.

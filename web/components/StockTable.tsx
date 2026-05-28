@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { DashboardRow } from "@/lib/queries";
 import { fmtPct, fmtRelative, fmtUsd } from "@/lib/format";
+import { computeUpside } from "@/lib/analyst";
 import { RatingBadge } from "./RatingBadge";
 import { SentimentSparkline } from "./SentimentSparkline";
 
@@ -23,6 +24,7 @@ export function StockTable({ rows }: { rows: DashboardRow[] }) {
               <th className="px-4 py-3 font-medium">Rating</th>
               <th className="px-4 py-3 font-medium">Price</th>
               <th className="px-4 py-3 font-medium">1d</th>
+              <th className="px-4 py-3 font-medium">Upside</th>
               <th className="px-4 py-3 font-medium">Sentiment</th>
               <th className="px-4 py-3 font-medium">Mentions</th>
               <th className="px-4 py-3 font-medium">Last seen</th>
@@ -31,6 +33,7 @@ export function StockTable({ rows }: { rows: DashboardRow[] }) {
           <tbody className="divide-y divide-neutral-800 bg-neutral-950">
             {rows.map((r) => {
               const change = r.change_pct_1d === null ? null : Number(r.change_pct_1d);
+              const upside = computeUpside(r.price, r.target_mean);
               return (
                 <tr key={r.ticker} className="hover:bg-neutral-900/60">
                   <td className="px-4 py-3">
@@ -49,6 +52,9 @@ export function StockTable({ rows }: { rows: DashboardRow[] }) {
                   <td className={`px-4 py-3 tabular-nums ${changeClass(change)}`}>
                     {fmtPct(change)}
                   </td>
+                  <td className={`px-4 py-3 tabular-nums ${changeClass(upside)}`}>
+                    {fmtPct(upside)}
+                  </td>
                   <td className="px-4 py-3">
                     <SentimentSparkline positive={r.pos} neutral={r.neu} negative={r.neg} />
                   </td>
@@ -65,6 +71,7 @@ export function StockTable({ rows }: { rows: DashboardRow[] }) {
       <ul className="flex flex-col gap-3 sm:hidden">
         {rows.map((r) => {
           const change = r.change_pct_1d === null ? null : Number(r.change_pct_1d);
+          const upside = computeUpside(r.price, r.target_mean);
           return (
             <li key={r.ticker} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
               <div className="flex items-start justify-between gap-2">
@@ -77,6 +84,7 @@ export function StockTable({ rows }: { rows: DashboardRow[] }) {
               <dl className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2 text-sm">
                 <Cell label="Price"><span className="tabular-nums">{fmtUsd(r.price)}</span></Cell>
                 <Cell label="1d"><span className={`tabular-nums ${changeClass(change)}`}>{fmtPct(change)}</span></Cell>
+                <Cell label="Upside"><span className={`tabular-nums ${changeClass(upside)}`}>{fmtPct(upside)}</span></Cell>
                 <Cell label="Mentions"><span className="tabular-nums text-neutral-300">{r.mention_count}</span></Cell>
                 <Cell label="Sentiment">
                   <span className="text-neutral-300">

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  getAnalystSnapshot,
   getPostsForTicker,
   getRatingHistory,
   getSentimentByDay,
@@ -11,6 +12,7 @@ import { fmtMcap, fmtPct, fmtRelative, fmtUsd } from "@/lib/format";
 import { SentimentChart } from "@/components/SentimentChart";
 import { RatingTimeline } from "@/components/RatingTimeline";
 import { PostList } from "@/components/PostList";
+import { AnalystView } from "@/components/AnalystView";
 import { NewsList } from "@/components/NewsList";
 
 export const dynamic = "force-dynamic";
@@ -39,10 +41,11 @@ export default async function TickerPage({ params }: PageProps) {
   const detail = await getTickerDetail(ticker);
   if (!detail) notFound();
 
-  const [ratings, sentiment, posts] = await Promise.all([
+  const [ratings, sentiment, posts, analyst] = await Promise.all([
     getRatingHistory(ticker, 30),
     getSentimentByDay(ticker, 30),
     getPostsForTicker(ticker, 20),
+    getAnalystSnapshot(ticker),
   ]);
 
   const sentimentChartData = sentiment.map((d) => ({
@@ -84,6 +87,8 @@ export default async function TickerPage({ params }: PageProps) {
         <Stat label="Mkt Cap" value={fmtMcap(detail.market_cap)} />
         <Stat label="P/E" value={detail.pe_ratio ? Number(detail.pe_ratio).toFixed(1) : "—"} />
       </section>
+
+      <AnalystView snapshot={analyst} currentPrice={detail.price} />
 
       <section className="grid gap-6 md:grid-cols-2">
         <div>
