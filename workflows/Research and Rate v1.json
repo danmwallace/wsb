@@ -158,7 +158,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Combine the five Finnhub responses + the original ticker row into one item.\n// Runs once per input item; `.item` references resolve via item linking to the\n// matching row from each upstream node.\nconst src = $('Loop over tickers').item.json;\nconst quote = $('Finnhub Quote').item.json || {};\nconst news = $('Aggregate News').item.json.news || [];\nconst metricBody = $('Finnhub Metrics').item.json || {};\nconst metric = metricBody.metric || {};\n\n// Recommendation endpoint returns an array of monthly snapshots, newest first.\n// May be empty (no coverage) or absent (403 with continueRegularOutput).\nconst recList = $('Finnhub Recommendation').item.json;\nconst rec = (Array.isArray(recList) && recList.length > 0) ? recList[0] : {};\n\n// Price target may be absent (premium tier 403, or just no coverage).\nconst tgt = $('Finnhub Price Target').item.json || {};\n\n// Finnhub /quote shape: c=current, dp=percent change, h=high, l=low, o=open, pc=previous close\nconst price = quote.c ?? null;\nconst change_pct_1d = quote.dp ?? null;\n\n// 5-day and YTD changes come from the metric endpoint when available.\nconst change_pct_5d = metric['5DayPriceReturnDaily'] ?? null;\nconst change_pct_ytd = metric['yearToDatePriceReturnDaily'] ?? null;\nconst market_cap = metric.marketCapitalization ?? null; // in millions for US tickers\nconst pe_ratio = metric.peNormalizedAnnual ?? metric.peExclExtraTTM ?? null;\n\n// Cap headlines at 10 to keep the prompt small.\nconst headlines = (Array.isArray(news) ? news : [])\n  .slice(0, 10)\n  .map(n => ({\n    headline: n.headline,\n    url: n.url,\n    source: n.source,\n    datetime: n.datetime\n  }));\n\nreturn {\n  ticker: src.ticker,\n  company: src.company,\n  pos_count: Number(src.pos_count) || 0,\n  neu_count: Number(src.neu_count) || 0,\n  neg_count: Number(src.neg_count) || 0,\n  price,\n  change_pct_1d,\n  change_pct_5d,\n  change_pct_ytd,\n  market_cap_m: market_cap,\n  pe_ratio,\n  news: headlines,\n  fundamentals: metric,\n  // Analyst block. All fields null when the source data is missing.\n  rec_period:        rec.period      ?? null,\n  rec_strong_buy:    rec.strongBuy   ?? null,\n  rec_buy:           rec.buy         ?? null,\n  rec_hold:          rec.hold        ?? null,\n  rec_sell:          rec.sell        ?? null,\n  rec_strong_sell:   rec.strongSell  ?? null,\n  target_high:       tgt.targetHigh  ?? null,\n  target_low:        tgt.targetLow   ?? null,\n  target_mean:       tgt.targetMean  ?? null,\n  target_median:     tgt.targetMedian ?? null,\n  target_updated_at: tgt.lastUpdated ?? null\n};"
+        "jsCode": "// Combine the Finnhub responses + the original ticker row into one item.\n// Runs once per input item; `.item` references resolve via item linking to the\n// matching row from each upstream node.\nconst src = $('Loop over tickers').item.json;\nconst quote = $('Finnhub Quote').item.json || {};\nconst news = $('Aggregate News').item.json.news || [];\nconst metricBody = $('Finnhub Metrics').item.json || {};\nconst metric = metricBody.metric || {};\n\n// Analyst recommendation: the recommendation endpoint returns a JSON array that\n// n8n splits into items; \"Aggregate recommendation\" collapses it to the most\n// recent month. price-target is a premium Finnhub endpoint we don't have access\n// to on the free tier, so price targets are always null.\nconst rec = $('Aggregate recommendation').item.json.recommendation || {};\n\n// Finnhub /quote shape: c=current, dp=percent change, h=high, l=low, o=open, pc=previous close\nconst price = quote.c ?? null;\nconst change_pct_1d = quote.dp ?? null;\n\n// 5-day and YTD changes come from the metric endpoint when available.\nconst change_pct_5d = metric['5DayPriceReturnDaily'] ?? null;\nconst change_pct_ytd = metric['yearToDatePriceReturnDaily'] ?? null;\nconst market_cap = metric.marketCapitalization ?? null; // in millions for US tickers\nconst pe_ratio = metric.peNormalizedAnnual ?? metric.peExclExtraTTM ?? null;\n\n// Cap headlines at 10 to keep the prompt small.\nconst headlines = (Array.isArray(news) ? news : [])\n  .slice(0, 10)\n  .map(n => ({\n    headline: n.headline,\n    url: n.url,\n    source: n.source,\n    datetime: n.datetime\n  }));\n\nreturn {\n  ticker: src.ticker,\n  company: src.company,\n  pos_count: Number(src.pos_count) || 0,\n  neu_count: Number(src.neu_count) || 0,\n  neg_count: Number(src.neg_count) || 0,\n  price,\n  change_pct_1d,\n  change_pct_5d,\n  change_pct_ytd,\n  market_cap_m: market_cap,\n  pe_ratio,\n  news: headlines,\n  fundamentals: metric,\n  // Analyst block. rec_* come from the most recent recommendation month (null\n  // when the ticker has no analyst coverage). target_* are always null:\n  // Finnhub's price-target endpoint requires a paid plan.\n  rec_period:        rec.period      ?? null,\n  rec_strong_buy:    rec.strongBuy   ?? null,\n  rec_buy:           rec.buy         ?? null,\n  rec_hold:          rec.hold        ?? null,\n  rec_sell:          rec.sell        ?? null,\n  rec_strong_sell:   rec.strongSell  ?? null,\n  target_high:       null,\n  target_low:        null,\n  target_mean:       null,\n  target_median:     null,\n  target_updated_at: null\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -477,36 +477,8 @@
           "id": "REPLACE_WITH_FINNHUB_CREDENTIAL_ID",
           "name": "Finnhub - X-Finnhub-Token"
         }
-      }
-    },
-    {
-      "parameters": {
-        "url": "=https://finnhub.io/api/v1/stock/price-target?symbol={{ encodeURIComponent($('Loop over tickers').item.json.ticker) }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
-        "options": {
-          "response": {
-            "response": {
-              "neverError": false
-            }
-          }
-        }
       },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "onError": "continueRegularOutput",
-      "position": [
-        -80,
-        -80
-      ],
-      "id": "bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb",
-      "name": "Finnhub Price Target",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE_WITH_FINNHUB_CREDENTIAL_ID",
-          "name": "Finnhub - X-Finnhub-Token"
-        }
-      }
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -643,6 +615,19 @@
       },
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Finnhub /stock/recommendation returns a JSON array (one row per month,\n// newest first); n8n's HTTP node splits it into one item per month, exactly\n// like company-news. Collapse back to a single item carrying the most recent\n// month so the rest of the per-ticker chain runs once, not once per month.\n// Use .first() for the ticker (input items are split) and filter on `period`\n// so the alwaysOutputData placeholder / onError passthrough is dropped.\n// Mirrors \"Aggregate News\".\nconst src = $('Loop over tickers').first().json;\nconst months = $input.all().map(i => i.json).filter(m => m && m.period);\nmonths.sort((a, b) => String(b.period).localeCompare(String(a.period)));\nreturn [{ json: { ...src, recommendation: months[0] || {} } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        -80
+      ],
+      "id": "dddddddd-dddd-4ddd-9ddd-dddddddddddd",
+      "name": "Aggregate recommendation"
     }
   ],
   "pinData": {},
@@ -740,18 +725,7 @@
       "main": [
         [
           {
-            "node": "Finnhub Price Target",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Finnhub Price Target": {
-      "main": [
-        [
-          {
-            "node": "Build research payload",
+            "node": "Aggregate recommendation",
             "type": "main",
             "index": 0
           }
@@ -851,6 +825,17 @@
         [
           {
             "node": "Loop over tickers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate recommendation": {
+      "main": [
+        [
+          {
+            "node": "Build research payload",
             "type": "main",
             "index": 0
           }
