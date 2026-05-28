@@ -88,7 +88,7 @@ export default async function TickerPage({ params }: PageProps) {
         <Stat label="P/E" value={detail.pe_ratio ? Number(detail.pe_ratio).toFixed(1) : "—"} />
       </section>
 
-      <AnalystView snapshot={analyst} currentPrice={detail.price} />
+      <AnalystView snapshot={analyst} />
 
       <section className="grid gap-6 md:grid-cols-2">
         <div>

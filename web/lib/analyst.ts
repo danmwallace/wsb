@@ -9,24 +9,6 @@ export interface RecCounts {
 }
 
 /**
- * Compute analyst target upside as a percent: (target / price - 1) * 100.
- * Returns null when either input is missing, non-finite, or price is zero.
- * Inputs accept numeric strings because Postgres NUMERIC comes through `pg`
- * as a string by default.
- */
-export function computeUpside(
-  price: string | number | null | undefined,
-  targetMean: string | number | null | undefined
-): number | null {
-  if (price === null || price === undefined || price === "") return null;
-  if (targetMean === null || targetMean === undefined || targetMean === "") return null;
-  const p = typeof price === "number" ? price : Number(price);
-  const t = typeof targetMean === "number" ? targetMean : Number(targetMean);
-  if (!Number.isFinite(p) || !Number.isFinite(t) || p === 0) return null;
-  return (t / p - 1) * 100;
-}
-
-/**
  * Map Finnhub recommendation counts to a single consensus label using a
  * weighted average: (sb*2 + b*1 + h*0 + s*-1 + ss*-2) / total.
  * Buckets are inclusive on the lower bound:

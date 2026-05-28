@@ -1,30 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeUpside, deriveConsensus } from "./analyst";
-
-describe("computeUpside", () => {
-  it("returns null when price is null", () => {
-    expect(computeUpside(null, 100)).toBeNull();
-  });
-  it("returns null when target_mean is null", () => {
-    expect(computeUpside(100, null)).toBeNull();
-  });
-  it("returns null when price is zero", () => {
-    expect(computeUpside(0, 100)).toBeNull();
-  });
-  it("returns null when either input is not finite", () => {
-    expect(computeUpside("not-a-number", 100)).toBeNull();
-    expect(computeUpside(100, "garbage")).toBeNull();
-  });
-  it("computes positive upside as a percent", () => {
-    expect(computeUpside(100, 120)).toBeCloseTo(20);
-  });
-  it("computes negative upside as a percent", () => {
-    expect(computeUpside(120, 100)).toBeCloseTo(-16.6667, 3);
-  });
-  it("accepts numeric strings (Postgres NUMERIC comes through as string)", () => {
-    expect(computeUpside("100.0000", "112.5000")).toBeCloseTo(12.5);
-  });
-});
+import { deriveConsensus } from "./analyst";
 
 describe("deriveConsensus", () => {
   it("returns null when all counts are zero", () => {

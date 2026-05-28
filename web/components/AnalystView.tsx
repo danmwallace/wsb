@@ -1,30 +1,22 @@
 import type { AnalystSnapshot } from "@/lib/queries";
-import { computeUpside, deriveConsensus, type ConsensusLabel } from "@/lib/analyst";
-import { fmtPct, fmtRelative, fmtUsd } from "@/lib/format";
+import { deriveConsensus, type ConsensusLabel } from "@/lib/analyst";
 
 interface Props {
   snapshot: AnalystSnapshot | null;
-  currentPrice: string | null;
 }
 
-export function AnalystView({ snapshot, currentPrice }: Props) {
-  const counts = snapshot
-    ? {
+export function AnalystView({ snapshot }: Props) {
+  const consensus = snapshot
+    ? deriveConsensus({
         strong_buy: snapshot.rec_strong_buy,
         buy: snapshot.rec_buy,
         hold: snapshot.rec_hold,
         sell: snapshot.rec_sell,
         strong_sell: snapshot.rec_strong_sell,
-      }
+      })
     : null;
-  const consensus = counts ? deriveConsensus(counts) : null;
-  const hasTargets =
-    !!snapshot &&
-    (snapshot.target_high !== null ||
-      snapshot.target_low !== null ||
-      snapshot.target_mean !== null);
 
-  if (!snapshot || (!consensus && !hasTargets)) {
+  if (!snapshot || !consensus) {
     return (
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-neutral-400">
@@ -37,38 +29,25 @@ export function AnalystView({ snapshot, currentPrice }: Props) {
     );
   }
 
-  const upside = computeUpside(currentPrice, snapshot.target_mean);
+  // snapshot is non-null past the guard, so these are concrete counts.
+  const counts = {
+    strong_buy: snapshot.rec_strong_buy,
+    buy: snapshot.rec_buy,
+    hold: snapshot.rec_hold,
+    sell: snapshot.rec_sell,
+    strong_sell: snapshot.rec_strong_sell,
+  };
 
   return (
     <section>
       <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-neutral-400">
         Analyst view
       </h2>
-      <div className="space-y-4 rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        {consensus && counts ? (
-          <div className="flex items-center gap-3">
-            <ConsensusBadge label={consensus} />
-            <DistributionBar counts={counts} />
-          </div>
-        ) : null}
-
-        {hasTargets ? (
-          <div className="grid grid-cols-3 gap-3">
-            <TargetTile label="Target high" value={snapshot.target_high} />
-            <TargetTile
-              label="Target mean"
-              value={snapshot.target_mean}
-              foot={upside === null ? undefined : `${fmtPct(upside)} vs current`}
-            />
-            <TargetTile label="Target low" value={snapshot.target_low} />
-          </div>
-        ) : null}
-
-        {snapshot.target_updated_at ? (
-          <div className="text-xs text-neutral-500">
-            Analyst data updated {fmtRelative(snapshot.target_updated_at)}
-          </div>
-        ) : null}
+      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+        <div className="flex items-center gap-3">
+          <ConsensusBadge label={consensus} />
+          <DistributionBar counts={counts} />
+        </div>
       </div>
     </section>
   );
@@ -136,28 +115,6 @@ function DistributionBar({
           />
         )
       )}
-    </div>
-  );
-}
-
-function TargetTile({
-  label,
-  value,
-  foot,
-}: {
-  label: string;
-  value: string | null;
-  foot?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
-      <div className="text-[0.65rem] uppercase tracking-wider text-neutral-500">
-        {label}
-      </div>
-      <div className="mt-1 text-lg font-semibold tabular-nums text-neutral-100">
-        {fmtUsd(value)}
-      </div>
-      {foot ? <div className="mt-0.5 text-xs text-neutral-500">{foot}</div> : null}
     </div>
   );
 }

@@ -20,7 +20,6 @@ export interface DashboardRow {
   pos: number;
   neu: number;
   neg: number;
-  target_mean: string | null;
 }
 
 export interface NewsHeadline {
@@ -88,16 +87,14 @@ export const listDashboardRows = unstable_cache(
     s.change_pct_1d,
     COALESCE(SUM(CASE WHEN p.sentiment = 'Positive' THEN 1 ELSE 0 END), 0)::int AS pos,
     COALESCE(SUM(CASE WHEN p.sentiment = 'Neutral'  THEN 1 ELSE 0 END), 0)::int AS neu,
-    COALESCE(SUM(CASE WHEN p.sentiment = 'Negative' THEN 1 ELSE 0 END), 0)::int AS neg,
-    a.target_mean
+    COALESCE(SUM(CASE WHEN p.sentiment = 'Negative' THEN 1 ELSE 0 END), 0)::int AS neg
   FROM tickers t
   LEFT JOIN v_latest_rating   r ON r.ticker = t.ticker
   LEFT JOIN v_latest_snapshot s ON s.ticker = t.ticker
-  LEFT JOIN v_latest_analyst  a ON a.ticker = t.ticker
   LEFT JOIN posts p ON p.ticker = t.ticker
   GROUP BY t.ticker, t.company, t.mention_count, t.last_seen_at,
            r.rating, r.confidence, r.as_of_date, r.rationale,
-           s.price, s.change_pct_1d, a.target_mean
+           s.price, s.change_pct_1d
   ORDER BY r.confidence DESC NULLS LAST, t.last_seen_at DESC
   `
     );
@@ -264,14 +261,11 @@ export interface AnalystSnapshot {
   rec_hold: number | null;
   rec_sell: number | null;
   rec_strong_sell: number | null;
-  target_high: string | null;
-  target_low: string | null;
-  target_mean: string | null;
-  target_median: string | null;
-  target_updated_at: Date | null;
   fetched_at: Date;
 }
 
+// Only the recommendation counts are surfaced — Finnhub's price-target endpoint
+// is premium, so the target_* columns are always null and aren't selected here.
 export const getAnalystSnapshot = cache(
   async (ticker: string): Promise<AnalystSnapshot | null> => {
     const rows = await query<AnalystSnapshot>(
@@ -279,8 +273,7 @@ export const getAnalystSnapshot = cache(
     SELECT
       ticker, as_of_date, rec_period,
       rec_strong_buy, rec_buy, rec_hold, rec_sell, rec_strong_sell,
-      target_high, target_low, target_mean, target_median,
-      target_updated_at, fetched_at
+      fetched_at
     FROM v_latest_analyst
     WHERE ticker = $1
     `,
