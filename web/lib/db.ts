@@ -18,6 +18,13 @@ function getPool(): Pool {
     max: 5,
     idleTimeoutMillis: 30_000,
   });
+  // An idle client that loses its connection (e.g. Postgres restarts) emits
+  // 'error' on the pool; without a listener it surfaces as an uncaughtException
+  // (a hard crash outside Next's server wrapper). The pool discards the broken
+  // client itself, so logging is all that's needed.
+  global.__pgPool.on("error", (err) => {
+    console.error("pg pool: idle client error", err);
+  });
   return global.__pgPool;
 }
 
