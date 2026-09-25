@@ -93,7 +93,12 @@
           "id": "REPLACE_WITH_FINNHUB_CREDENTIAL_ID",
           "name": "Finnhub - X-Finnhub-Token"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -153,7 +158,12 @@
           "id": "REPLACE_WITH_FINNHUB_CREDENTIAL_ID",
           "name": "Finnhub - X-Finnhub-Token"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "parameters": {
