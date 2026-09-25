@@ -70,12 +70,12 @@ Test with the manual trigger before activating the schedule triggers. Once both 
 
 ### 4. Web app
 
-Node 20+ required. Install via [`nvm`](https://github.com/nvm-sh/nvm) if you don't have it:
+Node 22+ required (matches the Docker image). Install via [`nvm`](https://github.com/nvm-sh/nvm) if you don't have it:
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 exec $SHELL
-nvm install 20
+nvm install 22
 ```
 
 Then:
